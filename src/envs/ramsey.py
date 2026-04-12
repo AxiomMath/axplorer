@@ -15,9 +15,9 @@ class RamseyDataPoint(DataPoint):
         self.violations = []
         if init:
             pass
-            # self._random_coloring()
-            # self.calc_features()
-            # self.cal_score()
+            self._random_coloring()
+            self.calc_features()
+            self.calc_score()
 
     def _random_coloring(self):
         for i in range(self.N):
@@ -31,7 +31,7 @@ class RamseyDataPoint(DataPoint):
         -x => x monochromatic cliques
         0 => ramsey-avoiding coloring
         """
-        # self._compute_violations()
+        self._compute_violations()
         self.score = -len(self.violations)
 
     def _compute_violations(self):
