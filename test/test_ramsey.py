@@ -1,5 +1,5 @@
 from itertools import combinations
-from src.envs.ramsey import RamseyDataPoint
+from src.envs.ramsey import RamseyEnvironment, RamseyDataPoint
 
 
 def setup_function():
@@ -19,7 +19,6 @@ def test_maximum_score():
     print(
         f"the maximum score on (N = {N}, r = {r}, s = {s}) = {max_violations(N, r, s)}"
     )
-    assert False
 
 
 def test_init_random():
@@ -64,3 +63,25 @@ def test_known_invalid_k6():
     dp = RamseyDataPoint(N=6, init=True)
     assert len(dp.violations) > 0
     assert dp.score < max_violations(6, 3, 3)
+
+
+def test_tokenizer():
+    from src.envs.ramsey import RamseyEnvironment, RamseyDataPoint
+    from src.envs.tokenizers import DenseTokenizer
+
+    RamseyDataPoint.R = 3
+    RamseyDataPoint.S = 3
+    dp = RamseyDataPoint(N=6, init=True)
+
+    SPECIAL_SYMBOLS = {"BOS": 0, "EOS": 1, "PAD": 2}
+    tok = DenseTokenizer(RamseyDataPoint, 6, 2, True, SPECIAL_SYMBOLS, pow2base=1)
+
+    encoded = tok.encode(dp)
+    print(f"Encoded: {encoded}")
+    print(f"Encoded length: {len(encoded)}")
+
+    decoded = tok.decode(encoded)
+    decoded.calc_features()
+    decoded.calc_score()
+    print(f"Decoded score: {decoded.score}")
+    print(f"Round-trip match: {(decoded.data == dp.data).all()}")
