@@ -4,10 +4,12 @@ from src.envs.environment import BaseEnvironment, DataPoint
 from src.envs.tokenizers import DenseTokenizer
 from src.utils import bool_flag
 
+
 class RamseyDataPoint(DataPoint):
     """
     Represents a red-blue coloring of a graph of a complete graph of N.
     """
+
     R = 5
     S = 5
 
@@ -31,12 +33,13 @@ class RamseyDataPoint(DataPoint):
                 self.data[j][i] = c
 
     def calc_score(self):
-        """
-        -x => x monochromatic cliques
-        0 => ramsey-avoiding coloring
-        """
         self._compute_violations()
-        self.score = -len(self.violations)
+        # pipeline needs score >= 0 for valid
+        # higher is better, so max_possible - violations
+        max_violations = len(list(combinations(range(self.N), self.r))) + len(
+            list(combinations(range(self.N), self.s))
+        )
+        self.score = max_violations - len(self.violations)
 
     def _compute_violations(self):
         """
@@ -46,12 +49,12 @@ class RamseyDataPoint(DataPoint):
         # check for red (0) cliques of size r
         for clique in combinations(range(self.N), self.r):
             if all(self.data[i][j] == 0 for i, j in combinations(clique, 2)):
-                self.violations.append(('red', clique))
+                self.violations.append(("red", clique))
 
         # check for blue (1) cliques of size s
         for clique in combinations(range(self.N), self.s):
             if all(self.data[i][j] == 1 for i, j in combinations(clique, 2)):
-                self.violations.append(('blue', clique))
+                self.violations.append(("blue", clique))
 
     def calc_features(self):
         """
@@ -70,7 +73,8 @@ class RamseyDataPoint(DataPoint):
         self._compute_violations()
 
         for iters in range(max_iter):
-            if not self.violations: break
+            if not self.violations:
+                break
             color, clique = self.violations[np.random.randint(len(self.violations))]
             edges = list(combinations(clique, 2))
             i, j = edges[np.random.randint(len(edges))]
@@ -84,11 +88,12 @@ class RamseyDataPoint(DataPoint):
 
     @classmethod
     def _update_class_params(cls, pars):
-        pass
+        cls.R, cls.S = pars
 
     @classmethod
     def _save_class_params(cls):
-        pass
+        return (cls.R, cls.S)
+
 
 class RamseyEnvironment(BaseEnvironment):
     k = 2
@@ -100,13 +105,26 @@ class RamseyEnvironment(BaseEnvironment):
         self.data_class.R = params.r
         self.data_class.S = params.s
         self.tokenizer = DenseTokenizer(
-            self.data_class, params.N, self.k, self.are_coordinates_symmetric,
-            self.SPECIAL_SYMBOLS, pow2base=params.pow2base
+            self.data_class,
+            params.N,
+            self.k,
+            self.are_coordinates_symmetric,
+            self.SPECIAL_SYMBOLS,
+            pow2base=params.pow2base,
         )
 
     @staticmethod
     def register_args(parser):
-        parser.add_argument("--N", type=int, default=43, help="Number of vertices in complete graph")
+        parser.add_argument(
+            "--N", type=int, default=43, help="Number of vertices in complete graph"
+        )
         parser.add_argument("--r", type=int, default=5, help="Red clique size to avoid")
-        parser.add_argument("--s", type=int, default=5, help="Blue clique size to avoid")
-        parser.add_argument("--pow2base", type=int, default=1, help="Bits per token for adjacency encoding")
+        parser.add_argument(
+            "--s", type=int, default=5, help="Blue clique size to avoid"
+        )
+        parser.add_argument(
+            "--pow2base",
+            type=int,
+            default=1,
+            help="Bits per token for adjacency encoding",
+        )
