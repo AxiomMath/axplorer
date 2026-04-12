@@ -1,16 +1,20 @@
 import numpy as np
 from itertools import combinations
-from src.envs.environment import DataPoint
+from src.envs.environment import BaseEnvironment, DataPoint
+from src.envs.tokenizers import DenseTokenizer
+from src.utils import bool_flag
 
 class RamseyDataPoint(DataPoint):
     """
     Represents a red-blue coloring of a graph of a complete graph of N.
     """
+    R = 5
+    S = 5
 
-    def __init__(self, N, r=3, s=3, init=False):
+    def __init__(self, N, init=False):
         self.N = N
-        self.r = r
-        self.s = s
+        self.r = self.__class__.R
+        self.s = self.__class__.S
         self.data = np.zeros((N, N), dtype=np.uint8)
         self.violations = []
         if init:
@@ -85,3 +89,24 @@ class RamseyDataPoint(DataPoint):
     @classmethod
     def _save_class_params(cls):
         pass
+
+class RamseyEnvironment(BaseEnvironment):
+    k = 2
+    are_coordinates_symmetric = True
+    data_class = RamseyDataPoint
+
+    def __init__(self, params):
+        super().__init__(params)
+        self.data_class.R = params.r
+        self.data_class.S = params.s
+        self.tokenizer = DenseTokenizer(
+            self.data_class, params.N, self.k, self.are_coordinates_symmetric,
+            self.SPECIAL_SYMBOLS, pow2base=params.pow2base
+        )
+
+    @staticmethod
+    def register_args(parser):
+        parser.add_argument("--N", type=int, default=43, help="Number of vertices in complete graph")
+        parser.add_argument("--r", type=int, default=5, help="Red clique size to avoid")
+        parser.add_argument("--s", type=int, default=5, help="Blue clique size to avoid")
+        parser.add_argument("--pow2base", type=int, default=1, help="Bits per token for adjacency encoding")
