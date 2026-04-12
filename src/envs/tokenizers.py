@@ -180,6 +180,7 @@ class DenseTokenizer(Tokenizer):
         self.pow2base = pow2base
         self.encoding_augmentation = encoding_augmentation
         self.stoi, self.itos = {}, {}
+        self.extra_symbols = extra_symbols
 
         self.expected_elements_in_a_decoded_sequence = math.ceil(count_index_tuples(N, self.k, self.are_coordinates_symmetric) / self.pow2base)
 
