@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
+from tqdm import tqdm
 
 from src.envs.environment import do_stats
 
@@ -49,20 +50,23 @@ def generate_and_score(args, classname):
     rem = args.gensize % BATCH
     if rem:
         batch_counts.append(rem)
-    if args.process_pool:
-        pars = classname._save_class_params()
-        with ProcessPoolExecutor(max_workers=min(20, args.num_workers)) as executor:
-            # map returns lists; stream them to avoid a giant materialization
-            for chunk in executor.map(
-                classname._batch_generate_and_score, batch_counts, repeat(args.N, len(batch_counts)), repeat(pars, len(batch_counts))
-            ):
-                if chunk:  # extend incrementally to manage memory
-                    data.extend(chunk)
-    else:
-        for t in batch_counts:
-            d = classname._batch_generate_and_score(t, args.N)
-            if d is not None:
-                data.extend(d)
+    with tqdm(total=args.gensize, desc="Generating data", unit="ex") as pbar:
+        if args.process_pool:
+            pars = classname._save_class_params()
+            with ProcessPoolExecutor(max_workers=min(20, args.num_workers)) as executor:
+                # map returns lists; stream them to avoid a giant materialization
+                for chunk in executor.map(
+                    classname._batch_generate_and_score, batch_counts, repeat(args.N, len(batch_counts)), repeat(pars, len(batch_counts))
+                ):
+                    if chunk:  # extend incrementally to manage memory
+                        data.extend(chunk)
+                        pbar.update(len(chunk))
+        else:
+            for t in batch_counts:
+                d = classname._batch_generate_and_score(t, args.N)
+                if d is not None:
+                    data.extend(d)
+                    pbar.update(len(d))
     return data
 
 
