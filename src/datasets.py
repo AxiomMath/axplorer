@@ -186,6 +186,7 @@ class InfiniteDataLoader:
         train_sampler = torch.utils.data.RandomSampler(dataset, replacement=True, num_samples=int(1e10))
         self.train_loader = DataLoader(dataset, sampler=train_sampler, collate_fn=dataset.collate_fn, **kwargs)
         self.data_iter = iter(self.train_loader)
+        self._closed = False
 
     def next(self):
         try:
@@ -194,3 +195,19 @@ class InfiniteDataLoader:
             self.data_iter = iter(self.train_loader)
             batch = next(self.data_iter)
         return batch
+
+    def close(self):
+        if self._closed:
+            return
+        shutdown_workers = getattr(self.data_iter, "_shutdown_workers", None)
+        if shutdown_workers is not None:
+            shutdown_workers()
+        self.data_iter = None
+        self.train_loader = None
+        self._closed = True
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
