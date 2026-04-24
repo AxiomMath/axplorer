@@ -45,6 +45,9 @@ def train(model, args, loader, optim, test_dataset, current_best_loss=None):
         optim.step()
         curr_loss += loss.item()
 
+        if args.device == "mps" and (step + 1) % 500 == 0:
+            torch.mps.empty_cache()
+
         # logging
         if (step + 1) % 100 == 0:
             t1 = time.time()

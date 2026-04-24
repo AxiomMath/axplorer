@@ -1,7 +1,5 @@
 import argparse
-import multiprocessing as mp
 import os
-import sys
 import time
 from logging import getLogger
 
@@ -17,27 +15,6 @@ from src.trainer import reload_model_optimizer, train
 from src.utils import bool_flag, force_release_memory, initialize_exp, log_resources, write_important_metrics
 
 logger = getLogger()
-
-
-def resolve_mp_context(args):
-    if args.num_workers <= 0:
-        return None
-
-    available_methods = set(mp.get_all_start_methods())
-
-    if sys.platform == "darwin":
-        preferred = ["fork"]
-    elif sys.platform == "win32":
-        preferred = ["spawn"]
-    else:
-        preferred = ["forkserver", "fork", "spawn"]
-
-    for method in preferred:
-        if method == "forkserver" and sys.version_info < (3, 14):
-            continue
-        if method in available_methods:
-            return method
-    return None
 
 
 def get_parser():
@@ -114,7 +91,6 @@ if __name__ == "__main__":
     if args.seed < 0:
         args.seed = np.random.randint(1_000_000_000)
     logger.info(f"seed: {args.seed}")
-    mp_context = resolve_mp_context(args)
 
     env = build_env(args)
 
@@ -189,9 +165,7 @@ if __name__ == "__main__":
                 f"Memory allocated: {torch.mps.current_allocated_memory()/(1024*1024):.2f}MB, reserved: {torch.mps.driver_allocated_memory()/(1024*1024):.2f}MB"
             )
 
-        batch_loader = InfiniteDataLoader(
-            train_dataset, batch_size=args.batch_size, pin_memory=True, num_workers=args.num_workers, multiprocessing_context=mp_context
-        )
+        batch_loader = InfiniteDataLoader(train_dataset, batch_size=args.batch_size, pin_memory=args.device == "cuda", num_workers=0)
         try:
             best_loss = train(model, args, batch_loader, optimizer, test_dataset, current_best_loss=best_loss)
         finally:
