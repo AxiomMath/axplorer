@@ -8,5 +8,6 @@ dependencies:
   - pytorch
   - numba
   - psutil
+  - tqdm
   - matplotlib
   - jupyterlab

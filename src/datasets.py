@@ -9,6 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
+from tqdm import tqdm
 
 from src.envs.environment import do_stats
 from src.utils import MAX_WORKERS
@@ -16,7 +17,7 @@ from src.utils import MAX_WORKERS
 logger = getLogger()
 
 
-def detokenize(data, args, env, executor=None):
+def detokenize(data, args, env, executor=None, pbar=None):
     res = []
     pars = env.tokenizer.dataclass._save_class_params()
     if args.process_pool:
@@ -27,13 +28,16 @@ def detokenize(data, args, env, executor=None):
             for chunk in executor.map(env.tokenizer.decode_batch, data_slices, repeat(pars, len(data_slices))):
                 if chunk:
                     res.extend(chunk)
+                    pbar.update(len(chunk))
         else:
             with ProcessPoolExecutor(max_workers=min(MAX_WORKERS, args.num_workers)) as ex:
                 for chunk in ex.map(env.tokenizer.decode_batch, data_slices, repeat(pars, len(data_slices))):
                     if chunk:
                         res.extend(chunk)
+                        pbar.update(len(chunk))
     else:
         res = env.tokenizer.decode_batch(data, pars)
+        pbar.update(len(res))
     return res
 
 
@@ -50,20 +54,24 @@ def generate_and_score(args, classname):
     rem = args.gensize % BATCH
     if rem:
         batch_counts.append(rem)
-    if args.process_pool:
-        pars = classname._save_class_params()
-        with ProcessPoolExecutor(max_workers=min(MAX_WORKERS, args.num_workers)) as executor:
-            # map returns lists; stream them to avoid a giant materialization
-            for chunk in executor.map(
-                classname._batch_generate_and_score, batch_counts, repeat(args.N, len(batch_counts)), repeat(pars, len(batch_counts))
-            ):
-                if chunk:  # extend incrementally to manage memory
-                    data.extend(chunk)
-    else:
-        for t in batch_counts:
-            d = classname._batch_generate_and_score(t, args.N)
-            if d is not None:
-                data.extend(d)
+
+    with tqdm(total=args.gensize, desc="Generating data", unit="ex") as pbar:
+        if args.process_pool:
+            pars = classname._save_class_params()
+            with ProcessPoolExecutor(max_workers=min(MAX_WORKERS, args.num_workers)) as executor:
+                # map returns lists; stream them to avoid a giant materialization
+                for chunk in executor.map(
+                    classname._batch_generate_and_score, batch_counts, repeat(args.N, len(batch_counts)), repeat(pars, len(batch_counts))
+                ):
+                    if chunk:  # extend incrementally to manage memory
+                        data.extend(chunk)
+                        pbar.update(len(chunk))
+        else:
+            for t in batch_counts:
+                d = classname._batch_generate_and_score(t, args.N)
+                if d is not None:
+                    data.extend(d)
+                    pbar.update(len(d))
     return data
 
 

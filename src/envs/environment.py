@@ -114,7 +114,7 @@ def _do_score(d, always_search: bool = False, redeem_only: bool = False, pars=No
     return (d, invalid)
 
 
-def do_score(data, args, executor=None):
+def do_score(data, args, executor=None, pbar=None):
     """
     Compute the score of a list of data.
     Can be parallelized with process_pool.
@@ -128,6 +128,7 @@ def do_score(data, args, executor=None):
             res, invalid = _do_score(d, args.always_search, args.redeem_only)
             n_invalid += invalid
             processed_data.append(res)
+            pbar.update(1)
     else:
         pars = data[0]._save_class_params()
 
@@ -137,11 +138,14 @@ def do_score(data, args, executor=None):
             for d, invalid in executor.map(_do_score, data, repeat(args.always_search), repeat(args.redeem_only), repeat(pars), chunksize=chunksize):
                 processed_data.append(d)
                 n_invalid += invalid
+                pbar.update(1)
         else:
             with ProcessPoolExecutor(max_workers=args.num_workers) as ex:
                 for d, invalid in ex.map(_do_score, data, repeat(args.always_search), repeat(args.redeem_only), repeat(pars), chunksize=chunksize):
                     processed_data.append(d)
                     n_invalid += invalid
+                    pbar.update(1)
+    pbar.refresh()
 
     valid_data = [d for d in processed_data if d.score >= 0]
 

@@ -6,6 +6,7 @@ from logging import getLogger
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 from src.datasets import detokenize
 from src.envs.environment import do_score, do_stats
@@ -75,46 +76,48 @@ def sample_and_score(model, args, stoi, itos, env, temp, temp_span=0):
     total_invalid = 0
     all_processed_data = []
     results_lock = threading.Lock()
+    detok_pbar = None
+    score_pbar = None
 
     executor = ProcessPoolExecutor(max_workers=min(MAX_WORKERS, args.num_workers))
 
     def process_batches(batches):
         nonlocal total_invalid
         all_data = [batch_numpy[j] for batch_numpy in batches for j in range(batch_numpy.shape[0])]
-        detok_results = detokenize(all_data, args, env, executor=executor)
-        valid_data, n_invalid, processed_data = do_score(detok_results, args=args, executor=executor)
+        detok_results = detokenize(all_data, args, env, executor=executor, pbar=detok_pbar)
+        valid_data, n_invalid, processed_data = do_score(detok_results, args=args, executor=executor, pbar=score_pbar)
         with results_lock:
             results.extend(valid_data)
             total_invalid += n_invalid
             all_processed_data.extend(processed_data)
 
-    with cpu_sink(process_batches, decouple=True) as sink:
-        pending_batches = []
+    with tqdm(total=args.num_samples_from_model, desc="Sampling", unit="ex") as sample_pbar:
+        with tqdm(total=args.num_samples_from_model, desc="Detokenizing", unit="ex") as detok_pbar:
+            with tqdm(total=args.num_samples_from_model, desc="Scoring", unit="ex") as score_pbar:
+                with cpu_sink(process_batches, decouple=True) as sink:
+                    pending_batches = []
 
-        for i in range(todo):
-            if temp_span > 0:
-                curr_temp = temp + 0.1 * np.random.randint(temp_span + 1)
-            else:
-                curr_temp = temp
-            if i % 100 == 0:
-                with results_lock:
-                    scored_so_far = len(results)
-                logger.info(f"{i*sample_batch_size} / {todo * sample_batch_size} samples generated, {scored_so_far} scored")
+                    for i in range(todo):
+                        if temp_span > 0:
+                            curr_temp = temp + 0.1 * np.random.randint(temp_span + 1)
+                        else:
+                            curr_temp = temp
 
-            X_init = torch.empty((sample_batch_size, 1), dtype=torch.long)
-            X_init[:, 0] = stoi["BOS"]
-            X_init = X_init.to(args.device)
-            top_k = args.top_k if args.top_k != -1 else None
-            batch_numpy = model.generate(X_init, args.max_len + 1, temperature=curr_temp, top_k=top_k, do_sample=True).cpu().numpy()
+                        X_init = torch.empty((sample_batch_size, 1), dtype=torch.long)
+                        X_init[:, 0] = stoi["BOS"]
+                        X_init = X_init.to(args.device)
+                        top_k = args.top_k if args.top_k != -1 else None
+                        batch_numpy = model.generate(X_init, args.max_len + 1, temperature=curr_temp, top_k=top_k, do_sample=True).cpu().numpy()
 
-            pending_batches.append(batch_numpy)
+                        pending_batches.append(batch_numpy)
+                        sample_pbar.update(sample_batch_size)
 
-            if len(pending_batches) >= DETOK_CHUNK_SIZE:
-                sink.submit(pending_batches)
-                pending_batches = []
+                        if len(pending_batches) >= DETOK_CHUNK_SIZE:
+                            sink.submit(pending_batches)
+                            pending_batches = []
 
-        if pending_batches:
-            sink.submit(pending_batches)
+                    if pending_batches:
+                        sink.submit(pending_batches)
 
     executor.shutdown(wait=True)
 
